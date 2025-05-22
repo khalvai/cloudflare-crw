@@ -5,13 +5,13 @@ FROM docker.arvancloud.ir/python:3.12-slim
 WORKDIR /app
 
 # Copy requirements.txt to install dependencies
-COPY ./requirements.txt .
+RUN pip install requests>=2.28.0 \
+    beautifulsoup4>=4.11.0 \
+    python-telegram-bot>=20.0 \
+    python-dotenv>=1.0.0 \
+    schedule>=1.2.0
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the application code and .env file
-COPY crawler.py .
+# Copy the application code and .env fileCOPY crawler.py .
 
 # Set environment variable to ensure Python doesn't buffer output
 ENV PYTHONUNBUFFERED=1
