@@ -166,13 +166,18 @@ async def get_csv_contents(bot):
 
 # Telegram command handlers
 async def start(update, context):
-    await update.message.reply_text("Welcome to the IELTS Crawler Bot! Use /scrape to run the crawler, /stats to get statistics, or /csv to get CSV contents.")
+    await update.message.reply_text("Welcome to the IELTS Crawler Bot! Use /scrape to run the crawler, /stats to get statistics, /csv to get CSV contents, or /getchatid to get your chat ID.")
     logger.info(f"User {update.effective_user.id} started the bot")
 
+async def get_chat_id(update, context):
+    chat_id = str(update.effective_chat.id)
+    await update.message.reply_text(f"Your chat ID is: {chat_id}")
+    logger.info(f"Sent chat ID {chat_id} to user {update.effective_user.id}")
+
 async def scrape(update, context):
-    if str(update.effective_user.id) not in TELEGRAM_CHAT_IDS:
+    if str(update.effective_chat.id) not in TELEGRAM_CHAT_IDS:
         await update.message.reply_text("Unauthorized access.")
-        logger.warning(f"Unauthorized access attempt by {update.effective_user.id}")
+        logger.warning(f"Unauthorized access attempt by {update.effective_chat.id}")
         return
     
     await update.message.reply_text("Starting the crawler...")
@@ -191,18 +196,18 @@ async def scrape(update, context):
     await update.message.reply_text("Crawler finished.")
 
 async def stats(update, context):
-    if str(update.effective_user.id) not in TELEGRAM_CHAT_IDS:
+    if str(update.effective_chat.id) not in TELEGRAM_CHAT_IDS:
         await update.message.reply_text("Unauthorized access.")
-        logger.warning(f"Unauthorized access attempt by {update.effective_user.id}")
+        logger.warning(f"Unauthorized access attempt by {update.effective_chat.id}")
         return
     
     completed_data, incomplete_data = scrape_data()
     await get_stats(context.bot, completed_data, incomplete_data)
 
 async def csv(update, context):
-    if str(update.effective_user.id) not in TELEGRAM_CHAT_IDS:
+    if str(update.effective_chat.id) not in TELEGRAM_CHAT_IDS:
         await update.message.reply_text("Unauthorized access.")
-        logger.warning(f"Unauthorized access attempt by {update.effective_user.id}")
+        logger.warning(f"Unauthorized access attempt by {update.effective_chat.id}")
         return
     
     await get_csv_contents(context.bot)
@@ -215,6 +220,7 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("getchatid", get_chat_id))
     application.add_handler(CommandHandler("scrape", scrape))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("csv", csv))
