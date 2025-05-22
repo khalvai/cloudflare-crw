@@ -9,7 +9,9 @@ import json
 from telegram.ext import Application, CommandHandler
 from telegram import Bot
 import asyncio
+import schedule
 from dotenv import load_dotenv
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +23,7 @@ TELEGRAM_CHAT_IDS = json.loads(os.getenv("TELEGRAM_CHAT_IDS", '[]')) + [BOT_OWNE
 BASE_URL = os.getenv("BASE_URL", "https://ieltsadd.ir/test?originalType=1%2C3&type=1%2C5&province=%D8%AA%D9%87%D8%B1%D8%A7%D9%86&typeMaterial=%DA%A9%D8%A7%D9%85%D9%BE%DB%8C%D9%88%D8%AA%D8%B1%DB%8C&page=")
 PAGE_RANGE = range(1, int(os.getenv("PAGE_RANGE_END", 11)))
 REQUEST_DELAY = float(os.getenv("REQUEST_DELAY", 1))  # Delay in seconds between requests
+SCHEDULE_INTERVAL = 5  # Minutes
 
 # Setup logging
 logging.basicConfig(
@@ -164,15 +167,40 @@ async def get_csv_contents(bot):
     
     return csv_files
 
+# Scheduled task to run every 5 minutes
+async def scheduled_task(bot):
+    logger.info("Running scheduled task")
+    completed_data, incomplete_data = scrape_data()
+    has_incomplete = write_to_csv(completed_data, incomplete_data)
+    
+    # Send stats to all authorized chat IDs
+    await get_stats(bot, completed_data, incomplete_data)
+    
+    # Send incomplete data if it exists
+    if has_incomplete:
+        message = "🚨 There is incomplete data:\n"
+        for entry in incomplete_data:
+            message += f"📅 {entry['تاریخ برگزاری']} | {entry['نام آزمون']} | Status: {entry['وضعیت']} | Location: {entry['محل برگزاری']} | Cost: {entry['هزینه آزمون']}\n"
+        await send_telegram_message(bot, message)
+    else:
+        await send_telegram_message(bot, "✅ No incomplete data found.")
+
+# Function to run the scheduler in a separate thread
+def run_scheduler(bot):
+    schedule.every(SCHEDULE_INTERVAL).minutes.do(lambda: asyncio.run(scheduled_task(bot)))
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
 # Telegram command handlers
 async def start(update, context):
     await update.message.reply_text("Welcome to the IELTS Crawler Bot! Use /scrape to run the crawler, /stats to get statistics, /csv to get CSV contents, or /getchatid to get your chat ID.")
-    logger.info(f"User {update.effective_user.id} started the bot")
+    logger.info(f"User {update.effective_chat.id} started the bot")
 
 async def get_chat_id(update, context):
     chat_id = str(update.effective_chat.id)
     await update.message.reply_text(f"Your chat ID is: {chat_id}")
-    logger.info(f"Sent chat ID {chat_id} to user {update.effective_user.id}")
+    logger.info(f"Sent chat ID {chat_id} to user {update.effective_chat.id}")
 
 async def scrape(update, context):
     if str(update.effective_chat.id) not in TELEGRAM_CHAT_IDS:
@@ -224,6 +252,11 @@ def main():
     application.add_handler(CommandHandler("scrape", scrape))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("csv", csv))
+    
+    # Start the scheduler in a separate thread
+    bot = application.bot
+    scheduler_thread = threading.Thread(target=run_scheduler, args=(bot,), daemon=True)
+    scheduler_thread.start()
     
     logger.info("Starting Telegram bot")
     application.run_polling()
