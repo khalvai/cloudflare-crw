@@ -4,6 +4,9 @@ FROM docker.arvancloud.ir/python:3.12-slim
 # Set working directory inside the container
 WORKDIR /app
 
+# Copy crawler.py and .env file to the container
+COPY crawler.py .
+
 # Copy requirements.txt to install dependencies
 RUN pip install requests>=2.28.0 \
     beautifulsoup4>=4.11.0 \
