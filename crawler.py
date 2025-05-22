@@ -59,7 +59,7 @@ def scrape_data():
         url = f"{BASE_URL}{page}"
         logger.info(f"Scraping: {url}")
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=90)
             if response.status_code != 200:
                 logger.warning(f"Non-200 status: {response.status_code}")
                 continue
