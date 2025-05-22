@@ -12,7 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code and .env file
 COPY crawler.py .
-COPY .env .
 
 # Set environment variable to ensure Python doesn't buffer output
 ENV PYTHONUNBUFFERED=1
