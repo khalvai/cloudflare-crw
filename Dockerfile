@@ -17,11 +17,5 @@ COPY src/ ./src/
 # Build TypeScript to JavaScript
 RUN npm run build
 
-# Copy .env
-COPY .env .
-
-# Create logs directory
-RUN mkdir -p logs
-
 # Command to run the bot
 CMD ["npm", "start"]
