@@ -1,4 +1,34 @@
-.env
-*.csv
-venv
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# TypeScript
+dist/
+*.tsbuildinfo
+
+# Logs
+logs/
 *.log
+
+# Environment variables
+.env
+
+# Docker
+Dockerfile.bak
+*.dockerignore.bak
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific
+.DS_Store
+Thumbs.db

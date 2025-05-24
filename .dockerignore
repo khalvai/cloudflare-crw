@@ -1,13 +1,4 @@
-# Ignore virtual environment
-venv/
-
-# Ignore Python cache files
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Ignore log files
+# Ignore logs
 logs/
 *.log
 
@@ -20,7 +11,12 @@ logs/
 *.bak
 *.swp
 
-# Ignore other common development files
+# Ignore node_modules (installed in container)
+node_modules/
+
+# Ignore TypeScript source after compilation
+src/
+
+# Ignore other development files
 *.md
-*.txt
 *.sh

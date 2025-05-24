@@ -1,23 +1,27 @@
-# Use a lightweight Python base image
-FROM docker.arvancloud.ir/python:3.12-slim
+# Use a lightweight Node.js base image
+FROM node:20-slim
 
-# Set working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy crawler.py and .env file to the container
-COPY crawler.py .
+# Copy package.json and package-lock.json
+COPY package.json .
 
-# Copy requirements.txt to install dependencies
-RUN pip install requests>=2.28.0 \
-    beautifulsoup4>=4.11.0 \
-    python-telegram-bot>=20.0 \
-    python-dotenv>=1.0.0 \
-    schedule>=1.2.0
+# Install dependencies
+RUN npm install
 
-# Copy the application code and .env fileCOPY crawler.py .
+# Copy TypeScript configuration and source code
+COPY tsconfig.json .
+COPY src/ ./src/
 
-# Set environment variable to ensure Python doesn't buffer output
-ENV PYTHONUNBUFFERED=1
+# Build TypeScript to JavaScript
+RUN npm run build
 
-# Command to run the Python script
-CMD ["python", "crawler.py"]
+# Copy .env
+COPY .env .
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Command to run the bot
+CMD ["npm", "start"]
