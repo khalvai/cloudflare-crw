@@ -19,7 +19,7 @@ const TELEGRAM_CHAT_IDS: string[] = JSON.parse(
 ).concat(BOT_OWNER_CHAT_ID);
 const BASE_URL: string =
   process.env.BASE_URL ||
-  "https://ieltsadd.ir/test?originalType=1%2C3&type=1%2C5&province=%D8%AA%D9%87%D8%B1%D8%A7%D9%86&typeMaterial=%DA%A9%D8%A7%D9%85%D9%BE%DB%8C%D9%88%D8%AA%D8%B1%DB%8C&page=";
+  "https://ieltsadd.ir/test?originalType=1%2C3&type=1%2C5&province=%D8%AA%D9%87%D8%B1%D8%A7%D9%86&typeMaterial=%DA%A9%D8%A7%D9%85%D9%BE%DB%8C%D9%88%D8%AA%D8%B7%D8%B1%DB%8C&page=";
 const PAGE_RANGE_END: number = parseInt(process.env.PAGE_RANGE_END || "11", 10);
 const REQUEST_DELAY: number =
   parseFloat(process.env.REQUEST_DELAY || "1") * 1000; // Convert to milliseconds
@@ -222,18 +222,15 @@ async function scheduledTask(): Promise<void> {
     incompleteDataHistory.push(hasIncomplete);
     incompleteDataHistory = incompleteDataHistory.slice(-12); // Keep last 12 checks (1 hour)
 
-    // Send stats
-    await getStats(completedData, incompleteData);
-
-    // Send incomplete data if it exists
+    // Send stats and incomplete data only if incomplete data exists
     if (hasIncomplete) {
+      await getStats(completedData, incompleteData);
+
       let message = "🚨 There is incomplete data:\n";
       for (const entry of incompleteData) {
         message += `📅 ${entry.examDate} | ${entry.examName} | Status: ${entry.status} | Location: ${entry.location} | Cost: ${entry.cost}\n`;
       }
       await sendTelegramMessage(message);
-    } else {
-      await sendTelegramMessage("✅ No incomplete data found in this check.");
     }
   } catch (error) {
     logger.error(
@@ -293,11 +290,9 @@ bot.command("scrape", async (ctx) => {
         message += `📅 ${entry.examDate} | ${entry.examName} | Status: ${entry.status} | Location: ${entry.location} | Cost: ${entry.cost}\n`;
       }
       await sendTelegramMessage(message);
-    } else {
-      await sendTelegramMessage("✅ No incomplete data found.");
+      await getStats(completedData, incompleteData);
     }
 
-    await getStats(completedData, incompleteData);
     await ctx.reply("Crawler finished.");
   } catch (error) {
     logger.error(`Error in scrape command: ${(error as Error).message}`);
@@ -314,7 +309,13 @@ bot.command("stats", async (ctx) => {
 
   try {
     const { completedData, incompleteData } = await scrapeData();
-    await getStats(completedData, incompleteData);
+    const hasIncomplete = incompleteData.length > 0;
+
+    if (hasIncomplete) {
+      await getStats(completedData, incompleteData);
+    } else {
+      await ctx.reply("No incomplete data found.");
+    }
   } catch (error) {
     logger.error(`Error in stats command: ${(error as Error).message}`);
     await ctx.reply(`❌ Error in stats command: ${(error as Error).message}`);
