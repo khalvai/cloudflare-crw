@@ -6,6 +6,7 @@ import { createLogger, transports, format } from "winston";
 import { config } from "dotenv";
 import { promises as fs } from "fs";
 import path from "path";
+import pLimit from "p-limit";
 
 // Load environment variables
 config();
@@ -22,6 +23,10 @@ const BASE_URL: string =
 const PAGE_RANGE_END: number = parseInt(process.env.PAGE_RANGE_END || "11", 10);
 const REQUEST_DELAY: number =
   parseFloat(process.env.REQUEST_DELAY || "1") * 1000; // Convert to milliseconds
+const CONCURRENCY_LIMIT: number = parseInt(
+  process.env.CONCURRENCY_LIMIT || "3",
+  10
+); // Limit concurrent requests
 
 // Interface for scraped data
 interface ExamEntry {
@@ -65,13 +70,21 @@ const logger = createLogger({
 // Initialize bot
 const bot = new Bot(TELEGRAM_BOT_TOKEN);
 
+// Limit concurrency for HTTP requests
+const limit = pLimit(CONCURRENCY_LIMIT);
+
+// Function to delay execution
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 // Function to send Telegram messages
 async function sendTelegramMessage(
   message: string,
   chatIds: string[] = TELEGRAM_CHAT_IDS
 ): Promise<void> {
-  for (const chatId of chatIds) {
-    if (chatId) {
+  const sendPromises = chatIds
+    .filter((chatId) => chatId)
+    .map(async (chatId) => {
       try {
         // Split message into chunks to respect Telegram's 4096-character limit
         for (let i = 0; i < message.length; i += 4096) {
@@ -85,72 +98,99 @@ async function sendTelegramMessage(
           }`
         );
       }
-    }
-  }
+    });
+
+  await Promise.all(sendPromises);
 }
 
-// Function to scrape data
+// Function to scrape a single page
+async function scrapePage(page: number): Promise<ScrapeResult> {
+  const completedData: ExamEntry[] = [];
+  const incompleteData: ExamEntry[] = [];
+  const url = `${BASE_URL}${page}`;
+  logger.info(`Scraping page ${page}: ${url}`);
+
+  try {
+    const response = await axios.get(url, { timeout: 10000 });
+    if (response.status === 200) {
+      const $ = load(response.data);
+      const table = $(
+        "table.table.table-striped.table-bordered.table-responsive.city_table"
+      );
+
+      if (table.length) {
+        table
+          .find("tr")
+          .slice(2)
+          .each((_, row) => {
+            const columns = $(row).find("td");
+            if (columns.length) {
+              try {
+                const entry: ExamEntry = {
+                  status: $(columns[0]).text().trim(),
+                  examName: $(columns[1]).text().trim(),
+                  examType: $(columns[2]).text().trim(),
+                  testType: $(columns[3]).text().trim(),
+                  examDate: $(columns[4]).text().trim(),
+                  location: $(columns[5]).text().trim(),
+                  cost: $(columns[6]).text().trim(),
+                };
+
+                if (entry.status === "تکمیل شد") {
+                  completedData.push(entry);
+                } else {
+                  incompleteData.push(entry);
+                }
+              } catch (error) {
+                logger.error(
+                  `Error parsing row on page ${page}: ${
+                    (error as Error).message
+                  }`
+                );
+              }
+            }
+          });
+      } else {
+        logger.warn(`No table found on page ${page}`);
+      }
+    } else {
+      logger.error(
+        `Failed to retrieve page ${page}. Status code: ${response.status}`
+      );
+    }
+  } catch (error) {
+    logger.error(`Network error on page ${page}: ${(error as Error).message}`);
+  }
+
+  return { completedData, incompleteData };
+}
+
+// Function to scrape all pages concurrently
 async function scrapeData(): Promise<ScrapeResult> {
   const completedData: ExamEntry[] = [];
   const incompleteData: ExamEntry[] = [];
 
-  for (let page = 1; page < PAGE_RANGE_END; page++) {
-    const url = `${BASE_URL}${page}`;
-    logger.info(`Scraping page ${page}: ${url}`);
-    try {
-      const response = await axios.get(url, { timeout: 10000 });
-      if (response.status === 200) {
-        const $ = load(response.data);
-        const table = $(
-          "table.table.table-striped.table-bordered.table-responsive.city_table"
-        );
+  const pages = Array.from({ length: PAGE_RANGE_END - 1 }, (_, i) => i + 1);
+  let requestCount = 0;
 
-        if (table.length) {
-          table
-            .find("tr")
-            .slice(2)
-            .each((_, row) => {
-              const columns = $(row).find("td");
-              if (columns.length) {
-                try {
-                  const entry: ExamEntry = {
-                    status: $(columns[0]).text().trim(),
-                    examName: $(columns[1]).text().trim(),
-                    examType: $(columns[2]).text().trim(),
-                    testType: $(columns[3]).text().trim(),
-                    examDate: $(columns[4]).text().trim(),
-                    location: $(columns[5]).text().trim(),
-                    cost: $(columns[6]).text().trim(),
-                  };
-
-                  if (entry.status === "تکمیل شد") {
-                    completedData.push(entry);
-                  } else {
-                    incompleteData.push(entry);
-                  }
-                } catch (error) {
-                  logger.error(
-                    `Error parsing row on page ${page}: ${
-                      (error as Error).message
-                    }`
-                  );
-                }
-              }
-            });
-        } else {
-          logger.warn(`No table found on page ${page}`);
-        }
-      } else {
-        logger.error(
-          `Failed to retrieve page ${page}. Status code: ${response.status}`
-        );
+  const scrapePromises = pages.map((page) =>
+    limit(async () => {
+      if (requestCount > 0) {
+        await delay(REQUEST_DELAY);
       }
-    } catch (error) {
-      logger.error(
-        `Network error on page ${page}: ${(error as Error).message}`
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY));
+      requestCount++;
+      return scrapePage(page);
+    })
+  );
+
+  const results = await Promise.all(scrapePromises);
+
+  for (const {
+    completedData: pageCompleted,
+    incompleteData: pageIncomplete,
+  } of results) {
+    completedData.push(...pageCompleted);
+    incompleteData.push(...pageIncomplete);
   }
 
   return { completedData, incompleteData };

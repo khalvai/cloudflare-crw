@@ -8,11 +8,12 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy TypeScript configuration and source code
 COPY tsconfig.json ./
-COPY src/ ./src/
+
+COPY bot.ts bot.ts
 
 # Build TypeScript to JavaScript
 RUN npm run build
