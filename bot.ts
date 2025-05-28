@@ -1,12 +1,12 @@
 import { Bot } from "grammy";
-import axios from "axios";
-import { load } from "cheerio";
 import cron from "node-cron";
 import { createLogger, transports, format } from "winston";
 import { config } from "dotenv";
 import { promises as fs } from "fs";
 import path from "path";
-import pLimit from "p-limit";
+import { IDP, Result, Observer } from "./Idp";
+import { Irsafam } from "./Irsafam";
+import { ADD } from "./ADD";
 
 // Load environment variables
 config();
@@ -17,16 +17,6 @@ const BOT_OWNER_CHAT_ID: string = process.env.BOT_OWNER_CHAT_ID || "";
 const TELEGRAM_CHAT_IDS: string[] = JSON.parse(
   process.env.TELEGRAM_CHAT_IDS || "[]"
 ).concat(BOT_OWNER_CHAT_ID);
-const BASE_URL: string =
-  process.env.BASE_URL ||
-  "https://ieltsadd.ir/test?originalType=1%2C3&type=1%2C5&province=%D8%AA%D9%87%D8%B1%D8%A7%D9%86&typeMaterial=%DA%A9%D8%A7%D9%85%D9%BE%DB%8C%D9%88%D8%AA%D8%B7%D8%B1%DB%8C&page=";
-const PAGE_RANGE_END: number = parseInt(process.env.PAGE_RANGE_END || "11", 10);
-const REQUEST_DELAY: number =
-  parseFloat(process.env.REQUEST_DELAY || "1") * 1000; // Convert to milliseconds
-const CONCURRENCY_LIMIT: number = parseInt(
-  process.env.CONCURRENCY_LIMIT || "3",
-  10
-); // Limit concurrent requests
 
 // Interface for scraped data
 interface ExamEntry {
@@ -37,11 +27,6 @@ interface ExamEntry {
   examDate: string;
   location: string;
   cost: string;
-}
-
-interface ScrapeResult {
-  completedData: ExamEntry[];
-  incompleteData: ExamEntry[];
 }
 
 // Incomplete data history for hourly checks
@@ -70,13 +55,6 @@ const logger = createLogger({
 // Initialize bot
 const bot = new Bot(TELEGRAM_BOT_TOKEN);
 
-// Limit concurrency for HTTP requests
-const limit = pLimit(CONCURRENCY_LIMIT);
-
-// Function to delay execution
-const delay = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 // Function to send Telegram messages
 async function sendTelegramMessage(
   message: string,
@@ -103,99 +81,6 @@ async function sendTelegramMessage(
   await Promise.all(sendPromises);
 }
 
-// Function to scrape a single page
-async function scrapePage(page: number): Promise<ScrapeResult> {
-  const completedData: ExamEntry[] = [];
-  const incompleteData: ExamEntry[] = [];
-  const url = `${BASE_URL}${page}`;
-  logger.info(`Scraping page ${page}: ${url}`);
-
-  try {
-    const response = await axios.get(url, { timeout: 10000 });
-    if (response.status === 200) {
-      const $ = load(response.data);
-      const table = $(
-        "table.table.table-striped.table-bordered.table-responsive.city_table"
-      );
-
-      if (table.length) {
-        table
-          .find("tr")
-          .slice(2)
-          .each((_, row) => {
-            const columns = $(row).find("td");
-            if (columns.length) {
-              try {
-                const entry: ExamEntry = {
-                  status: $(columns[0]).text().trim(),
-                  examName: $(columns[1]).text().trim(),
-                  examType: $(columns[2]).text().trim(),
-                  testType: $(columns[3]).text().trim(),
-                  examDate: $(columns[4]).text().trim(),
-                  location: $(columns[5]).text().trim(),
-                  cost: $(columns[6]).text().trim(),
-                };
-
-                if (entry.status === "تکمیل شد") {
-                  completedData.push(entry);
-                } else {
-                  incompleteData.push(entry);
-                }
-              } catch (error) {
-                logger.error(
-                  `Error parsing row on page ${page}: ${
-                    (error as Error).message
-                  }`
-                );
-              }
-            }
-          });
-      } else {
-        logger.warn(`No table found on page ${page}`);
-      }
-    } else {
-      logger.error(
-        `Failed to retrieve page ${page}. Status code: ${response.status}`
-      );
-    }
-  } catch (error) {
-    logger.error(`Network error on page ${page}: ${(error as Error).message}`);
-  }
-
-  return { completedData, incompleteData };
-}
-
-// Function to scrape all pages concurrently
-async function scrapeData(): Promise<ScrapeResult> {
-  const completedData: ExamEntry[] = [];
-  const incompleteData: ExamEntry[] = [];
-
-  const pages = Array.from({ length: PAGE_RANGE_END - 1 }, (_, i) => i + 1);
-  let requestCount = 0;
-
-  const scrapePromises = pages.map((page) =>
-    limit(async () => {
-      if (requestCount > 0) {
-        await delay(REQUEST_DELAY);
-      }
-      requestCount++;
-      return scrapePage(page);
-    })
-  );
-
-  const results = await Promise.all(scrapePromises);
-
-  for (const {
-    completedData: pageCompleted,
-    incompleteData: pageIncomplete,
-  } of results) {
-    completedData.push(...pageCompleted);
-    incompleteData.push(...pageIncomplete);
-  }
-
-  return { completedData, incompleteData };
-}
-
 // Function to get statistics
 async function getStats(
   completedData: ExamEntry[],
@@ -213,24 +98,43 @@ async function getStats(
 
 // 5-minute scheduled task
 async function scheduledTask(): Promise<void> {
+  const observers: Observer[] = [new IDP(), new Irsafam(), new ADD()];
   logger.info("Running 5-minute scheduled task");
   try {
-    const { completedData, incompleteData } = await scrapeData();
-    const hasIncomplete = incompleteData.length > 0;
+    const promises = observers.map((ob) => ob.doYourThing());
 
-    // Update incomplete data history
-    incompleteDataHistory.push(hasIncomplete);
-    incompleteDataHistory = incompleteDataHistory.slice(-12); // Keep last 12 checks (1 hour)
+    const results = await Promise.all(promises);
+    console.log(results);
 
-    // Send stats and incomplete data only if incomplete data exists
-    if (hasIncomplete) {
-      await getStats(completedData, incompleteData);
-
-      let message = "🚨 There is incomplete data:\n";
-      for (const entry of incompleteData) {
-        message += `📅 ${entry.examDate} | ${entry.examName} | Status: ${entry.status} | Location: ${entry.location} | Cost: ${entry.cost}\n`;
+    if (results.some((result) => result.found)) {
+      try {
+        await sendTelegramMessage(
+          "✅  Found:" +
+            results
+              .filter((result) => result.found)
+              .map((result) => result.data)
+              .join("\n")
+        );
+      } catch (error) {
+        logger.error(
+          `Error sending found message: ${(error as Error).message}`
+        );
+        incompleteDataHistory.push(true);
       }
-      await sendTelegramMessage(message);
+    }
+    if (results.some((result) => result.hasError)) {
+      let messages = "";
+      results.forEach((result) => {
+        if (result.hasError) {
+          console.log("res", result);
+          messages = messages
+            .concat("\n")
+            .concat(`${result.site}: ${result.data}`);
+        }
+      });
+      if (messages) {
+        await sendTelegramMessage(`❌ Error: ${messages}`);
+      }
     }
   } catch (error) {
     logger.error(
@@ -281,44 +185,12 @@ bot.command("scrape", async (ctx) => {
 
   await ctx.reply("Starting the crawler...");
   try {
-    const { completedData, incompleteData } = await scrapeData();
-    const hasIncomplete = incompleteData.length > 0;
-
-    if (hasIncomplete) {
-      let message = "🚨 There is incomplete data:\n";
-      for (const entry of incompleteData) {
-        message += `📅 ${entry.examDate} | ${entry.examName} | Status: ${entry.status} | Location: ${entry.location} | Cost: ${entry.cost}\n`;
-      }
-      await sendTelegramMessage(message);
-      await getStats(completedData, incompleteData);
-    }
+    await scheduledTask();
 
     await ctx.reply("Crawler finished.");
   } catch (error) {
     logger.error(`Error in scrape command: ${(error as Error).message}`);
     await ctx.reply(`❌ Error in scrape command: ${(error as Error).message}`);
-  }
-});
-
-bot.command("stats", async (ctx) => {
-  if (!TELEGRAM_CHAT_IDS.includes(ctx.chat.id.toString())) {
-    await ctx.reply("Unauthorized access.");
-    logger.warn(`Unauthorized access attempt by ${ctx.chat.id}`);
-    return;
-  }
-
-  try {
-    const { completedData, incompleteData } = await scrapeData();
-    const hasIncomplete = incompleteData.length > 0;
-
-    if (hasIncomplete) {
-      await getStats(completedData, incompleteData);
-    } else {
-      await ctx.reply("No incomplete data found.");
-    }
-  } catch (error) {
-    logger.error(`Error in stats command: ${(error as Error).message}`);
-    await ctx.reply(`❌ Error in stats command: ${(error as Error).message}`);
   }
 });
 
@@ -333,7 +205,7 @@ async function main(): Promise<void> {
   await fs.mkdir("logs", { recursive: true });
 
   // Schedule tasks
-  cron.schedule("*/5 * * * *", scheduledTask); // Every 5 minutes
+  cron.schedule("*/1 * * * *", scheduledTask); // Every 5 minutes
   cron.schedule("0 * * * *", hourlyTask); // Every hour
 
   // Start bot
