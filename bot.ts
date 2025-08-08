@@ -12,12 +12,18 @@ import { ADD } from "./ADD";
 config();
 
 // Configuration
-const TELEGRAM_BOT_TOKEN: string = process.env.TELEGRAM_BOT_TOKEN || "";
-const BOT_OWNER_CHAT_ID: string = process.env.BOT_OWNER_CHAT_ID || "";
-const TELEGRAM_CHAT_IDS: string[] = JSON.parse(
-  process.env.TELEGRAM_CHAT_IDS || "[]"
-).concat(BOT_OWNER_CHAT_ID);
+const TELEGRAM_BOT_TOKEN: string | undefined = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_OWNER_CHAT_ID: string | undefined = process.env.BOT_OWNER_CHAT_ID;
+const TELEGRAM_CHANNEL_ID: string | undefined = process.env.TELEGRAM_CHANNEL_ID;
 
+if (!TELEGRAM_BOT_TOKEN || !BOT_OWNER_CHAT_ID || !TELEGRAM_CHANNEL_ID) {
+  console.error("Missing required environment variables.");
+
+  throw new Error(
+    "TELEGRAM_BOT_TOKEN, BOT_OWNER_CHAT_ID, or TELEGRAM_CHANNEL_ID is not set."
+  );
+  process.exit(1);
+}
 // Interface for scraped data
 interface ExamEntry {
   status: string;
@@ -56,29 +62,24 @@ const logger = createLogger({
 const bot = new Bot(TELEGRAM_BOT_TOKEN);
 
 // Function to send Telegram messages
-async function sendTelegramMessage(
-  message: string,
-  chatIds: string[] = TELEGRAM_CHAT_IDS
-): Promise<void> {
-  const sendPromises = chatIds
-    .filter((chatId) => chatId)
-    .map(async (chatId) => {
-      try {
-        // Split message into chunks to respect Telegram's 4096-character limit
-        for (let i = 0; i < message.length; i += 4096) {
-          await bot.api.sendMessage(chatId, message.slice(i, i + 4096));
-        }
-        logger.info(`Sent Telegram message to ${chatId}`);
-      } catch (error) {
-        logger.error(
-          `Failed to send Telegram message to ${chatId}: ${
-            (error as Error).message
-          }`
-        );
-      }
-    });
-
-  await Promise.all(sendPromises);
+async function sendTelegramMessage(message: string): Promise<void> {
+  try {
+    // Split message into chunks to respect Telegram's 4096-character limit
+    for (let i = 0; i < message.length; i += 4096) {
+      // await bot.api.s
+      await bot.api.sendMessage(
+        TELEGRAM_CHANNEL_ID || "",
+        message.slice(i, i + 4096)
+      );
+    }
+    logger.info(`Sent Telegram message to ${TELEGRAM_CHANNEL_ID}`);
+  } catch (error) {
+    logger.error(
+      `Failed to send Telegram message to ${TELEGRAM_CHANNEL_ID}: ${
+        (error as Error).message
+      }`
+    );
+  }
 }
 
 // Function to get statistics
@@ -104,7 +105,6 @@ async function scheduledTask(): Promise<void> {
     const promises = observers.map((ob) => ob.doYourThing());
 
     const results = await Promise.all(promises);
-    console.log(results);
 
     if (results.some((result) => result.found)) {
       try {
@@ -177,7 +177,7 @@ bot.command("getchatid", async (ctx) => {
 });
 
 bot.command("scrape", async (ctx) => {
-  if (!TELEGRAM_CHAT_IDS.includes(ctx.chat.id.toString())) {
+  if (BOT_OWNER_CHAT_ID !== ctx.chat.id.toString()) {
     await ctx.reply("Unauthorized access.");
     logger.warn(`Unauthorized access attempt by ${ctx.chat.id}`);
     return;
@@ -203,6 +203,8 @@ async function main(): Promise<void> {
 
   // Create logs directory
   await fs.mkdir("logs", { recursive: true });
+
+  // cron.schedule("* * * * *", scheduledTask); // Every minute
 
   // Schedule tasks
   cron.schedule("*/1 * * * *", scheduledTask); // Every 5 minutes
