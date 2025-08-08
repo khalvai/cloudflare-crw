@@ -99,7 +99,7 @@ async function getStats(
 
 // 5-minute scheduled task
 async function scheduledTask(): Promise<void> {
-  const observers: Observer[] = [new IDP(), new Irsafam(), new ADD()];
+  const observers: Observer[] = [new IDP(), new Irsafam()];
   logger.info("Running 5-minute scheduled task");
   try {
     const promises = observers.map((ob) => ob.doYourThing());
@@ -207,7 +207,8 @@ async function main(): Promise<void> {
   // cron.schedule("* * * * *", scheduledTask); // Every minute
 
   // Schedule tasks
-  cron.schedule("*/1 * * * *", scheduledTask); // Every 5 minutes
+  // Schedule the task to run every 5 minutes
+  cron.schedule("*/5 * * * *", scheduledTask); // Every 5 minutes
   cron.schedule("0 * * * *", hourlyTask); // Every hour
 
   // Start bot
