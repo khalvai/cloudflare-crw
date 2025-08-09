@@ -1,5 +1,5 @@
 name = "site-monitor-bot"
-main = "dist/bot.js"
+main = "dist/main.js"
 compatibility_date = "2025-08-09"
 
 [[triggers]]

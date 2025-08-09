@@ -1,15 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
+    "module": "commonjs", // <- change this
     "outDir": "./dist",
     "rootDir": ".",
-    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*", "bot.ts"],
+  "include": ["src/**/*", "main.ts", "IDP.ts", "Irsafam.ts", "ADD.ts"],
   "exclude": ["node_modules"]
 }
