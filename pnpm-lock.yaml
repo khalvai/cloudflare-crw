@@ -30,6 +30,9 @@ importers:
         specifier: ^3.13.0
         version: 3.17.0
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20250809.0
+        version: 4.20250809.0
       '@types/node':
         specifier: ^20.17.50
         version: 20.17.51
@@ -56,6 +59,9 @@ importers:
         version: 5.8.3
 
 packages:
+
+  '@cloudflare/workers-types@4.20250809.0':
+    resolution: {integrity: sha512-MAG8S0aL+/WT52/XaqXCb6qc7XyfuYqmhwnpyLsx+RUkMZJxkhpJqaOny3Wa4IlWQfpgtQXktogmEoxxCpUmfA==}
 
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
@@ -652,6 +658,8 @@ packages:
     engines: {node: '>=12.20'}
 
 snapshots:
+
+  '@cloudflare/workers-types@4.20250809.0': {}
 
   '@colors/colors@1.6.0': {}
 
