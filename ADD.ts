@@ -1,12 +1,6 @@
 import { Observer, Result } from "./Idp";
-import { Bot } from "grammy";
 import axios from "axios";
 import { load } from "cheerio";
-import cron from "node-cron";
-import { createLogger, transports, format } from "winston";
-import { config } from "dotenv";
-import { promises as fs } from "fs";
-import path from "path";
 import pLimit from "p-limit";
 interface ExamEntry {
   status: string;
