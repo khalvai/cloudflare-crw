@@ -2,8 +2,6 @@ import { Bot } from "grammy";
 import cron from "node-cron";
 import { createLogger, transports, format } from "winston";
 import { config } from "dotenv";
-import { promises as fs } from "fs";
-import path from "path";
 import { IDP, Result, Observer } from "./Idp";
 import { Irsafam } from "./Irsafam";
 import { ADD } from "./ADD";
@@ -48,14 +46,6 @@ const logger = createLogger({
         `${timestamp} - ${level.toUpperCase()} - ${message}`
     )
   ),
-  transports: [
-    new transports.File({
-      filename: path.join(
-        "logs",
-        `crawler_${new Date().toISOString().replace(/[:.]/g, "-")}.log`
-      ),
-    }),
-  ],
 });
 
 // Initialize bot
@@ -202,7 +192,6 @@ async function main(): Promise<void> {
   }
 
   // Create logs directory
-  await fs.mkdir("logs", { recursive: true });
 
   // cron.schedule("* * * * *", scheduledTask); // Every minute
 
